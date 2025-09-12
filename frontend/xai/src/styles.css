@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  color-scheme: dark;
+}
+
+* {
+  @apply border-border-subtle;
+}
+
+body {
+  @apply bg-bg-base text-text-primary font-sans;
+}
+
+/* Light theme overrides (for fallback/marketing pages) */
+.light {
+  color-scheme: light;
+}
+
+.light * {
+  @apply border-border-subtle-light;
+}
+
+.light body {
+  @apply bg-bg-base-light text-text-primary-light;
+}
+
+/* Focus ring styling */
+.focus-ring {
+  @apply ring-2 ring-focus-ring ring-opacity-100;
+  box-shadow: 0 0 0 2px rgba(198,255,61,0.45), 0 0 6px rgba(198,255,61,0.35);
+}
+
+/* Selection styling */
+::selection {
+  @apply bg-selection;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-bg-surface;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-steel rounded-pill;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-text-muted;
+}
+
+/* Code block styling */
+.code-block {
+  @apply font-mono text-code bg-bg-elevated border border-border-subtle rounded-card p-4;
+}
+
+.code-block .line:nth-child(even) {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Graph grid background */
+.graph-canvas {
+  background-color: theme('colors.bg-surface');
+  background-image: 
+    linear-gradient(theme('colors.graph-grid') 1px, transparent 1px),
+    linear-gradient(90deg, theme('colors.graph-grid') 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.06;
+}
+
+/* Skeleton shimmer effect */
+.skeleton {
+  @apply bg-bg-elevated relative overflow-hidden;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  animation: shimmer 900ms ease-in-out infinite;
+}
