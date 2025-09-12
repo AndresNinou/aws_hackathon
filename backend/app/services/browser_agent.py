@@ -2,6 +2,7 @@
 
 This service uses the browser-use library with LangChain OpenAI
 to intelligently navigate and interact with websites based on natural language instructions.
+Supports HAR recording and cookie saving for session management.
 """
 
 import asyncio
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from browser_use import Agent
+from browser_use import Browser as BrowserSession
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
@@ -20,8 +22,9 @@ from app.core.config import settings
 class BrowserAgent:
     """AI-powered browser automation agent using browser-use library.
     
-    Uses browser-use for simplified browser control with LangChain OpenAI
+    Uses browser-use with BrowserSession for browser control and LangChain OpenAI
     for intelligent decision making based on natural language instructions.
+    Supports HAR recording and cookie saving through Playwright context access.
     """
 
     def __init__(self):
@@ -125,6 +128,13 @@ class BrowserAgent:
             if cookies_path is None:
                 cookies_path = str(Path("cookies.json").resolve())
             
+            # Create BrowserSession with minimal HAR recording enabled
+            browser_session = BrowserSession(
+                record_har_path=har_path,
+                record_har_content="omit",  # Omit response content for minimal size
+                record_har_mode="minimal",  # Minimal recording mode - network only
+            )
+            
             # Create the task with explicit URL navigation
             task = f"""
             Open {url}
@@ -132,17 +142,35 @@ class BrowserAgent:
             {instruction}
             """
             
-            # Create agent with browser-use
+            # Create agent with custom browser session
             agent = Agent(
                 task=task.strip(),
                 llm=self.llm,
+                browser_session=browser_session
             )
             
             # Execute the task
             result = await agent.run()
             
-            # Note: HAR recording and cookie saving will need to be implemented
-            # when browser-use supports these features or through custom browser context
+            # Save storage state (cookies + localStorage) after task execution and close context to flush HAR
+            try:
+                # Access the playwright context through the browser session
+                if hasattr(browser_session, 'context') and browser_session.context:
+                    state = await browser_session.context.storage_state(path=cookies_path)
+                    logger.info(
+                        f"Saved storage_state to {cookies_path} with {len(state.get('cookies', []))} cookies"
+                    )
+                else:
+                    logger.warning("Could not access browser context for storage_state extraction")
+            except Exception as cookie_error:
+                logger.error(f"Error saving storage_state: {cookie_error}")
+            finally:
+                # Ensure context is closed so HAR file is finalized on disk
+                try:
+                    if hasattr(browser_session, 'context') and browser_session.context:
+                        await browser_session.context.close()
+                except Exception as close_error:
+                    logger.warning(f"Error closing browser context after recording: {close_error}")
             
             logger.info(f"Successfully executed browser task with recording")
             
@@ -151,7 +179,7 @@ class BrowserAgent:
                 "instruction": instruction,
                 "success": True,
                 "result": str(result),
-                "action_taken": f"Executed task with recording: {instruction}",
+                "action_taken": f"Executed task with HAR recording: {instruction}",
                 "har_path": har_path,
                 "cookies_path": cookies_path,
                 "error": None

@@ -313,11 +313,18 @@ main().catch(console.error);
 export const runReverseEngineering = baseProcedure
   .mutation(async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/reverse`, {
+      const response = await fetch(`${BACKEND_URL}/api/v1/browser/execute-with-recording`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
+        body: JSON.stringify({
+          cookies_path: 'cookies.json',
+          har_path: 'network_requests.har',
+          instruction: 'click fetch products',
+          url: 'http://127.0.0.1:5000',
+        }),
       });
 
       if (!response.ok) {
@@ -328,15 +335,17 @@ export const runReverseEngineering = baseProcedure
       const result = await response.json();
       
       return {
-        success: result.success,
-        message: result.message,
-        harFileCreated: result.har_file_created,
-        harFilePath: result.har_file_path,
-        harFileSize: result.har_file_size,
-        cookiesFileCreated: result.cookies_file_created,
-        cookiesFilePath: result.cookies_file_path,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        // prefer backend-provided success, default to true on 2xx
+        success: typeof result.success === 'boolean' ? result.success : true,
+        message: result.message || 'Reverse engineering executed with recording.',
+        // map possible field names to existing UI expectations
+        harFileCreated: Boolean(result.har_file_created ?? result.har_path ?? result.harFilePath),
+        harFilePath: result.har_file_path || result.har_path || result.harFilePath || null,
+        harFileSize: result.har_file_size || result.harFileSize || null,
+        cookiesFileCreated: Boolean(result.cookies_file_created ?? result.cookies_path ?? result.cookiesFilePath),
+        cookiesFilePath: result.cookies_file_path || result.cookies_path || result.cookiesFilePath || null,
+        stdout: result.stdout ?? null,
+        stderr: result.stderr ?? null,
       };
     } catch (error) {
       return {
