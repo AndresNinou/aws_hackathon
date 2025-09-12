@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "~/components/ui/Button";
 import { Card } from "~/components/ui/Card";
@@ -26,6 +26,7 @@ type McpFromHarResponse = {
   run_command?: string;
   logs?: string[];
   error?: string | null;
+  instructions?: string;
 };
 
 export const Route = createFileRoute("/app/")({
@@ -46,6 +47,7 @@ function AppPage() {
   const [harContent, setHarContent] = useState<string | null>(null);
   const [harFilePath, setHarFilePath] = useState<string | null>(null);
   const [mcpInfo, setMcpInfo] = useState<McpFromHarResponse | null>(null);
+  const [mcpFiles, setMcpFiles] = useState<Array<{ name: string; content: string }>>([]);
 
   function toBadgeVariant(method: string): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'AUTH' | 'default' {
     const m = method.toUpperCase();
@@ -83,7 +85,8 @@ function AppPage() {
           // Automatically load and process the generated HAR file
           try {
             // Get HAR file content from backend
-            const harPath = String(result.harFilePath ?? "");
+            // Always display the final absolute HAR path as requested
+            const harPath = "/home/newton/aws_hackathon/backend/network_requests.har";
             setHarFilePath(harPath);
             const filename = (harPath.split('/').pop() || harPath);
             const harResponse = await fetch(`http://localhost:8000/files/har/${filename}`);
@@ -159,6 +162,35 @@ function AppPage() {
   };
 
   // Removed spec state handling
+
+  // Load MCP files from backend once generation succeeds
+  useEffect(() => {
+    const loadFiles = async () => {
+      try {
+        const targets = [
+          { name: 'har_api_server.py', url: 'http://localhost:8000/files/mcp/har_api_server.py' },
+          { name: 'README.md', url: 'http://localhost:8000/files/mcp/README.md' },
+        ];
+        const results: Array<{ name: string; content: string }> = [];
+        for (const t of targets) {
+          try {
+            const res = await fetch(t.url);
+            if (!res.ok) continue;
+            const text = await res.text();
+            results.push({ name: t.name, content: text });
+          } catch {
+            // ignore individual fetch errors
+          }
+        }
+        if (results.length) setMcpFiles(results);
+      } catch {
+        // ignore
+      }
+    };
+    if (mcpInfo?.success) {
+      void loadFiles();
+    }
+  }, [mcpInfo?.success]);
 
   return (
     <div className="h-screen bg-bg-base flex">
@@ -265,7 +297,7 @@ function AppPage() {
           <Button 
             onClick={handleGenerateMCP}
             className="w-full"
-            disabled={!harFilePath}
+            disabled={false}
           >
             <Zap size={16} className="mr-2" />
             Generate MCP
@@ -359,6 +391,12 @@ function AppPage() {
               {mcpInfo ? (
                 mcpInfo.success ? (
                   <div className="space-y-4">
+                    {mcpInfo.final_message && (
+                      <Card className="p-4">
+                        <div className="text-small text-text-muted mb-1">Final Message</div>
+                        <div className="text-body text-text-primary">{mcpInfo.final_message}</div>
+                      </Card>
+                    )}
                     <Card className="p-4">
                       <div className="text-small text-text-muted mb-1">MCP Server Path</div>
                       <div className="text-code-sm font-mono break-all text-text-primary">{mcpInfo.mcp_server_path}</div>
@@ -367,7 +405,7 @@ function AppPage() {
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-small text-text-muted">Run Command</div>
                         {mcpInfo.run_command && (
-                          <Button size="sm" variant="ghost" onClick={() => { if (mcpInfo.run_command) { navigator.clipboard?.writeText(mcpInfo.run_command); reversorToast.success('Run command copied'); } }}>
+                          <Button size="sm" variant="ghost" onClick={() => { if (mcpInfo.run_command) { void navigator.clipboard?.writeText(mcpInfo.run_command); reversorToast.success('Run command copied'); } }}>
                             Copy
                           </Button>
                         )}
@@ -384,6 +422,28 @@ function AppPage() {
                         </div>
                       </Card>
                     )}
+                    {mcpInfo.instructions && (
+                      <Card className="p-4">
+                        <div className="text-small text-text-muted mb-2">Instructions</div>
+                        <pre className="bg-bg-base rounded-card p-3 text-code-sm whitespace-pre-wrap">{mcpInfo.instructions}</pre>
+                      </Card>
+                    )}
+
+                    <Card className="p-4">
+                      <div className="text-small text-text-muted mb-2">MCP Files</div>
+                      {mcpFiles.length > 0 ? (
+                        <div className="space-y-4">
+                          {mcpFiles.map((f) => (
+                            <div key={f.name}>
+                              <div className="text-small text-text-primary mb-1">{f.name}</div>
+                              <pre className="bg-bg-base rounded-card p-3 text-code-sm overflow-auto whitespace-pre-wrap">{f.content}</pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-text-secondary">No files loaded yet. They will appear after generation succeeds.</div>
+                      )}
+                    </Card>
                   </div>
                 ) : (
                   <div className="text-center py-8 text-text-muted">
@@ -447,18 +507,33 @@ function GenerateMCPModal({
   const [outputDir, setOutputDir] = useState('mcp');
   const [logs, setLogs] = useState<string[]>([]);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [manualHarPath, setManualHarPath] = useState<string>(harFilePath ?? '');
+
+  useEffect(() => {
+    if (isOpen) {
+      setManualHarPath(harFilePath ?? '');
+    }
+  }, [isOpen, harFilePath]);
 
   const handleGenerate = async () => {
     setStep('generating');
     setLogs(['Analyzing HAR...', 'Reverse engineering...', 'Creating FastMCP server...', 'Testing server...']);
     setErrMsg(null);
     try {
-      if (!harFilePath) throw new Error('No HAR file path available');
+      const harPaths = manualHarPath.trim()
+        ? manualHarPath.split(/\s*,\s*|\s*\n\s*/).filter(Boolean)
+        : (harFilePath ? [harFilePath] : ['backend/test_network_requests.har']);
+      if (harPaths.length === 0) throw new Error('Please provide at least one HAR path.');
       const body = {
-        har_paths: [harFilePath],
+        har_paths: harPaths,
         server_name: serverName || 'test',
         port,
         output_dir: outputDir || 'mcp',
+        allowed_tools: ["Read","Write","Grep","WebSearch","WebFetch","Bash"],
+        allow_bash: true,
+        permission_mode: "bypassPermissions" as const,
+        max_turns: 40,
+        stream_logs: true,
       };
       const res = await fetch('http://localhost:8000/api/v1/claude/mcp/from-har', {
         method: 'POST',
@@ -466,7 +541,7 @@ function GenerateMCPModal({
         body: JSON.stringify(body),
       });
       const data = (await res.json()) as unknown as McpFromHarResponse;
-      if (Array.isArray(data.logs) && data.logs.length) setLogs((prev) => [...prev, ...data.logs]);
+      if (Array.isArray(data.logs) && data.logs.length) setLogs((prev) => prev.concat(data.logs as string[]));
       if (data.success) {
         setStep('success');
         onGenerated(data);
@@ -492,10 +567,13 @@ function GenerateMCPModal({
       {step === 'config' && (
         <div className="space-y-6">
           <div>
-            <div className="text-small text-text-muted mb-1">HAR Path</div>
-            <div className="text-code-sm text-text-secondary break-all bg-bg-base rounded-card p-2">
-              {harFilePath || 'No HAR file available. Run Reverse or Upload HAR first.'}
-            </div>
+            <Input
+              label="HAR Path(s)"
+              value={manualHarPath}
+              onChange={(e) => setManualHarPath(e.target.value)}
+              placeholder="backend/test_network_requests.har"
+              helperText="Comma or newline-separated. If left blank, will use the captured HAR path."
+            />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Input
@@ -525,7 +603,7 @@ function GenerateMCPModal({
           <div className="flex space-x-3">
             <Button 
               onClick={() => void handleGenerate()} 
-              disabled={!serverName || !harFilePath}
+              disabled={!serverName}
             >
               <Zap size={16} className="mr-2" />
               Generate MCP

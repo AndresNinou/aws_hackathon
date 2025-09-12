@@ -52,3 +52,11 @@ async def example():
 
 asyncio.run(example())
 ```
+
+## Next Steps
+
+To start the MCP server, run the following command:
+
+```bash
+fastmcp run mcp/har_api_server.py:mcp --transport http --port 8111
+```

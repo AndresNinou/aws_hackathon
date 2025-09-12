@@ -136,6 +136,7 @@ Implementation requirements:
 - Keep the implementation minimal and dependency-light. Add docstrings for each tool with input params and expected output.
 - Create a short README at {readme_rel_path} explaining how to run the server.
 - Do NOT hardcode secrets; read base URLs and headers from tool parameters where appropriate.
+ - In the README, include a "Next Steps" section that explicitly instructs the user to run the server using the command in step 3.
 
 3) Provide a run command (do not execute) to start the MCP server via HTTP transport on port {port}:
    fastmcp run {server_rel_path}:mcp --transport http --port {port}
@@ -210,6 +211,11 @@ Implementation requirements:
             "logs": logs[-100:],  # limit size but include more context
             "mcp_server_path": str(server_abs_path),
             "run_command": f"fastmcp run {server_rel_path}:mcp --transport http --port {port}",
+            "instructions": (
+                "MCP server generated. To run it locally, execute:\n"
+                f"fastmcp run {server_rel_path}:mcp --transport http --port {port}\n"
+                f"Then connect your MCP client to http://127.0.0.1:{port}. See {readme_rel_path} for details."
+            ),
         }
         return result
 

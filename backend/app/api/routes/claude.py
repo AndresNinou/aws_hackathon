@@ -85,6 +85,8 @@ class ClaudeMcpFromHarResponse(BaseModel):
     run_command: Optional[str] = None
     logs: Optional[List[str]] = None
     error: Optional[str] = None
+    # Default instructions to run the generated MCP server
+    instructions: Optional[str] = None
 
 
 @router.post("/mcp/from-har", response_model=ClaudeMcpFromHarResponse)
